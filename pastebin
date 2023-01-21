@@ -1,0 +1,30 @@
+namespace WinFormsApp1
+{
+    public partial class Form1 : Form
+    {
+        public Form1()
+        {
+            InitializeComponent();
+        }
+
+        private void button1_Click(object sender, EventArgs e)
+        {
+            textBox1.Text = removeTag(textBox1.Text, "[[STARTHERE]]", "[[ENDHERE]]");
+        }
+
+        private string removeTag(string input, string startTag, string endTag)
+        {
+            string result = input;
+
+            int startTagIdx = input.IndexOf(startTag);
+            int endTagIdx = input.LastIndexOf(endTag) + endTag.Length;
+            if (startTagIdx > 0 && endTagIdx > startTagIdx)
+            {
+                result = input.Substring(0, startTagIdx);
+                result += input.Substring(endTagIdx, input.Length - endTagIdx);
+            }
+
+            return result;
+        }
+    }
+}
