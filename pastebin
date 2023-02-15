@@ -75,3 +75,48 @@ public class Map<T1, T2>
 RSAEncryption rsa = new RSAEncryption(HashAlgorithmName.SHA256, Encoding.UTF8, _rsaSettings.RSAPrivateKeyForDB);
 "RSAPublicKeyForDB": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAr0p+aeVV5w6yJMaWaGmvUKtTKA3D27PHfuzrMTQwI93xhXBxQqIybk+oLpX7a8aN8x27FeHHZrXqhAKilZp5vmtnLpRQh52zJ4LgiwfRX3W2BYPyWiiMfJo+BlQuZP4cqztqWLx4UI0ZQGhlAtDNlrVUoX2oT8JH9CNkS5bdkSbTCURxk3taK8z9FdBFz1PSNBBOZx7phrkznnOrF+4SW2AvbOdZx3fMst0Ae/JrcColqcHCJztklWB8pR0wiaEz57PdHYtd8Ju89wkJuWOHrJZZ1Xjfeakhv6Rb4TJQCCjKD+AjudZqOuzlyHvW3Q2JIl4vReoQkov4m3+ey3dj4wIDAQAB",
 "RSAPrivateKeyForDB": "MIIEowIBAAKCAQEAr0p+aeVV5w6yJMaWaGmvUKtTKA3D27PHfuzrMTQwI93xhXBxQqIybk+oLpX7a8aN8x27FeHHZrXqhAKilZp5vmtnLpRQh52zJ4LgiwfRX3W2BYPyWiiMfJo+BlQuZP4cqztqWLx4UI0ZQGhlAtDNlrVUoX2oT8JH9CNkS5bdkSbTCURxk3taK8z9FdBFz1PSNBBOZx7phrkznnOrF+4SW2AvbOdZx3fMst0Ae/JrcColqcHCJztklWB8pR0wiaEz57PdHYtd8Ju89wkJuWOHrJZZ1Xjfeakhv6Rb4TJQCCjKD+AjudZqOuzlyHvW3Q2JIl4vReoQkov4m3+ey3dj4wIDAQABAoIBAEN6zPFdLNWXDbMkk9A8JxZJ7eg0bFqOedT9xYiai5GzJf/1ilRZdkqK9baBXFlgBVM69cN1uDps+4u4K/ilkApi9ES1Kc8bQVWLh39eEhbKjLjQ06Iri/GHuyrai0WroUO1yrnATBzORJNL3N7ZnNtQkPTeF8Ykh2iPm1OSD1eJ08iw6a/U3tbzaK/kKJ7Xk/Qb74v+dUsZF/Rmfj7rCpWS/WP1sVxdAlhev4E7aECTZIxfvO6aG/JQ8pm8PH+m6a9MvjyAXOwkLgHg+X7gKV4eYjmYSt/JdxxufHORI0yGTWpGajCD57+wNE0mxflizDyHzXin6nc6vqMWKVoLoZECgYEA6Sbi+wOwl1tWTBhteYWW9kUhOJTLIIsOWPJgDEEhGjYYhCI7vJfCjcA9L9QARS1nWhVV7Jd+em37mAgAGaqpFbl8OK9uxJB1dCTG8CUcUGxJ6hER5L8urbqgPSryOChPsE+/FRHllQtY57sAC/ZVfWojytk2LDrdIBWI2YufbckCgYEAwHgK7NvO37cFv4mhQhCbmWHKH34Q7FmdcwujFUVzjGNIY9D8bpnFeVcW3I8JKHZ+g7NOUtAxDWFQh1r6DzDXc3wSQ+isAMykC6d/qx6ylueTRQnFvOwDRu/x20D2+ZbAspHE2z3aM8AXyEzUsyU3iYT8LkFHj4/6CWx00BBlaksCgYAoZH5KcpczgbVvtYOx2/0NaWiZ/t06JB02N7eAKABuJBUXPz8OK1SfbkCrepUZZwZSywN5270jxM4jxq8Nw01L4DivMWWFVGmk14JHtIY1QK2FibOJ571Uh9KfBkO0ivdTWl2GbvVRXwfmDbWyXNjuw2a0C/GgtAn/NvvghJn4UQKBgFhcxGdJ4whCdpkhDq/OACHDC5C5x/s6iVawGQdDA3GIg0uQPtRoNIkouo43/PResma0g1jxzBNggiAiXHts6P1UEO6se4tCaG4RUEO3rDYryyj++5FoqXh/4IHQqZKc64sP8VjWZL8tib2jyGMWyxCPxVdXEQuQBjMdX+PGI0lRAoGBAMWueCDV9NejjtUE+9SYyaL3FGbmUVwtkjNLvDEZRDyOp8X0UPboR6dF5Z2vLORZOSXcoRutItBWHLS/Z+tA9ODLP7jst21QTz8sgcrNDgVxvoGT+BzJm2N87aUo8rGeqRE4wlBPKnZihW3U6KgcZNMkUQd0nnNzohQ7ZdKxG6lY"
+
+
+
+#!/bin/sh
+SERVICE_NAME=ms-ecm-bulk
+PATH_TO_JAR=/home/admin/ms-ecm-bulk-1.0.0.jar
+PID_PATH_NAME=/home/admin/ms-ecm-bulk
+case $1 in
+    start)
+        echo "Starting $SERVICE_NAME ..."
+        if [ ! -f $PID_PATH_NAME ]; then
+            nohup java -jar $PATH_TO_JAR >> /home/admin/ms-ecm-bulk.log &
+            echo $! > $PID_PATH_NAME
+            echo "$SERVICE_NAME started ..."
+        else
+            echo "$SERVICE_NAME is already running ..."
+        fi
+    ;;
+    stop)
+        if [ -f $PID_PATH_NAME ]; then
+            PID=$(cat $PID_PATH_NAME);
+            echo "$SERVICE_NAME stoping ..."
+            kill $PID;
+            echo "$SERVICE_NAME stopped ..."
+            rm $PID_PATH_NAME
+        else
+            echo "$SERVICE_NAME is not running ..."
+        fi
+    ;;
+    restart)
+        if [ -f $PID_PATH_NAME ]; then
+            PID=$(cat $PID_PATH_NAME);
+            echo "$SERVICE_NAME stopping ...";
+            kill $PID;
+            echo "$SERVICE_NAME stopped ...";
+            rm $PID_PATH_NAME
+            echo "$SERVICE_NAME starting ..."
+            nohup java -jar $PATH_TO_JAR >> /home/admin/ms-ecm-bulk.log &
+            echo $! > $PID_PATH_NAME
+            echo "$SERVICE_NAME started ..."
+        else
+            echo "$SERVICE_NAME is not running ..."
+        fi
+    ;;
+esac
