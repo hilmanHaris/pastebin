@@ -120,3 +120,19 @@ case $1 in
         fi
     ;;
 esac
+
+
+------------------------------
+
+[Unit]
+Description=My Java Program
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/java -jar /home/admin/ms-ecm-bulk.jar
+WorkingDirectory=/home/admin
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
