@@ -140,50 +140,71 @@ WantedBy=multi-user.target
 
 ------------------------------
 
-
 import (
     "context"
     "database/sql"
+    "fmt"
+    "time"
 
-    "github.com/otel-contrib/sqltrace"
+    "github.com/XSAM/otelsql"
+    "github.com/XSAM/otelsql/jaeger"
+    "github.com/jmoiron/sqlx"
     "go.opentelemetry.io/otel/api/global"
-    "go.opentelemetry.io/otel/api/trace"
-    "go.opentelemetry.io/otel/exporters/stdout"
+    "go.opentelemetry.io/otel/attribute"
+    "go.opentelemetry.io/otel/exporters/trace/jaeger"
     "go.opentelemetry.io/otel/sdk/resource"
     "go.opentelemetry.io/otel/sdk/trace"
     "go.opentelemetry.io/otel/semconv"
-    "go.opentelemetry.io/otel/trace"
+    "go.uber.org/zap"
     _ "github.com/lib/pq"
 )
 
 func main() {
-    // Create a new OpenTelemetry tracer provider with a stdout exporter
+    // Initialize a tracer provider
     tp := trace.NewTracerProvider(
-        trace.WithConfig(trace.Config{DefaultSampler: trace.AlwaysSample()}),
-        trace.WithSyncer(stdout.NewExporter(stdout.WithPrettyPrint())),
-        trace.WithResource(resource.NewWithAttributes(semconv.ServiceNameKey.String("otel-sqlx-example"))),
+        trace.WithResource(resource.NewWithAttributes(
+            semconv.SchemaURL,
+            attribute.String("service.name", "my-service"),
+        )),
+        trace.WithSampler(trace.AlwaysSample()),
+        trace.WithBatcher(jaeger.NewExportPipeline(
+            jaeger.WithCollectorEndpoint("http://localhost:14268/api/traces"),
+            jaeger.WithProcess(jaeger.Process{
+                ServiceName: "my-service",
+            }),
+        )),
     )
-    global.SetTraceProvider(tp)
+    global.SetTracerProvider(tp)
 
-    // Create a new PostgreSQL database connection
-    db, err := sql.Open("postgres", "host=localhost port=5432 user=postgres password=postgres dbname=mydb sslmode=disable")
+    // Set up logging
+    logger, _ := zap.NewDevelopment()
+    defer logger.Sync()
+
+    // Create a database connection
+    dsn := "user=postgres dbname=mydb password=mypass host=localhost sslmode=disable"
+    db, err := sqlx.Connect("postgres", dsn)
     if err != nil {
-        log.Fatalf("failed to connect to database: %v", err)
+        logger.Error("Failed to open database connection", zap.Error(err))
+        return
     }
+    defer db.Close()
 
-    // Wrap the database connection with sqltrace to automatically trace all database calls
-    db = sqltrace.WrapDB(db)
+    // Wrap the database connection with the otelsql driver
+    driverName := "otelsql-pq"
+    driver := otelsql.Wrap(sqlx.NewDb(db.DB, driverName))
 
-    // Execute a query
-    ctx := context.Background()
-    rows, err := db.QueryContext(ctx, "SELECT * FROM mytable")
-    if err != nil {
-        log.Fatalf("failed to execute query: %v", err)
+    // Set attributes for all spans
+    attr := semconv.DBSystemPostgreSQL.Value("mydb")
+    otelsql.SetDBAttributes(attr)
+
+    // Use the database connection as usual, now using sqlx
+    ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+    defer cancel()
+
+    var count int
+    if err := driver.QueryRowContext(ctx, "SELECT COUNT(*) FROM mytable").Scan(&count); err != nil {
+        logger.Error("Failed to execute query", zap.Error(err))
+        return
     }
-    defer rows.Close()
-
-    // Iterate over the results
-    for rows.Next() {
-        // process each row
-    }
+    logger.Info("Result", zap.Int("count", count))
 }
