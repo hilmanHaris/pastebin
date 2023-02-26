@@ -136,3 +136,54 @@ RestartSec=10
 
 [Install]
 WantedBy=multi-user.target
+
+
+------------------------------
+
+
+import (
+    "context"
+    "database/sql"
+
+    "github.com/otel-contrib/sqltrace"
+    "go.opentelemetry.io/otel/api/global"
+    "go.opentelemetry.io/otel/api/trace"
+    "go.opentelemetry.io/otel/exporters/stdout"
+    "go.opentelemetry.io/otel/sdk/resource"
+    "go.opentelemetry.io/otel/sdk/trace"
+    "go.opentelemetry.io/otel/semconv"
+    "go.opentelemetry.io/otel/trace"
+    _ "github.com/lib/pq"
+)
+
+func main() {
+    // Create a new OpenTelemetry tracer provider with a stdout exporter
+    tp := trace.NewTracerProvider(
+        trace.WithConfig(trace.Config{DefaultSampler: trace.AlwaysSample()}),
+        trace.WithSyncer(stdout.NewExporter(stdout.WithPrettyPrint())),
+        trace.WithResource(resource.NewWithAttributes(semconv.ServiceNameKey.String("otel-sqlx-example"))),
+    )
+    global.SetTraceProvider(tp)
+
+    // Create a new PostgreSQL database connection
+    db, err := sql.Open("postgres", "host=localhost port=5432 user=postgres password=postgres dbname=mydb sslmode=disable")
+    if err != nil {
+        log.Fatalf("failed to connect to database: %v", err)
+    }
+
+    // Wrap the database connection with sqltrace to automatically trace all database calls
+    db = sqltrace.WrapDB(db)
+
+    // Execute a query
+    ctx := context.Background()
+    rows, err := db.QueryContext(ctx, "SELECT * FROM mytable")
+    if err != nil {
+        log.Fatalf("failed to execute query: %v", err)
+    }
+    defer rows.Close()
+
+    // Iterate over the results
+    for rows.Next() {
+        // process each row
+    }
+}
