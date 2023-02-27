@@ -139,72 +139,113 @@ WantedBy=multi-user.target
 
 
 ------------------------------
+package main
 
 import (
-    "context"
-    "database/sql"
-    "fmt"
-    "time"
+	"context"
+	"fmt"
+	"log"
+	"os"
+	"os/signal"
+	"sync"
+	"time"
 
-    "github.com/XSAM/otelsql"
-    "github.com/XSAM/otelsql/jaeger"
-    "github.com/jmoiron/sqlx"
-    "go.opentelemetry.io/otel/api/global"
-    "go.opentelemetry.io/otel/attribute"
-    "go.opentelemetry.io/otel/exporters/trace/jaeger"
-    "go.opentelemetry.io/otel/sdk/resource"
-    "go.opentelemetry.io/otel/sdk/trace"
-    "go.opentelemetry.io/otel/semconv"
-    "go.uber.org/zap"
-    _ "github.com/lib/pq"
+	"github.com/Shopify/sarama"
 )
 
 func main() {
-    // Initialize a tracer provider
-    tp := trace.NewTracerProvider(
-        trace.WithResource(resource.NewWithAttributes(
-            semconv.SchemaURL,
-            attribute.String("service.name", "my-service"),
-        )),
-        trace.WithSampler(trace.AlwaysSample()),
-        trace.WithBatcher(jaeger.NewExportPipeline(
-            jaeger.WithCollectorEndpoint("http://localhost:14268/api/traces"),
-            jaeger.WithProcess(jaeger.Process{
-                ServiceName: "my-service",
-            }),
-        )),
-    )
-    global.SetTracerProvider(tp)
+	// Set up configuration for consumer group
+	config := sarama.NewConfig()
+	config.Consumer.Group.Rebalance.Strategy = sarama.BalanceStrategyRoundRobin
+	config.Consumer.Offsets.Initial = sarama.OffsetOldest
 
-    // Set up logging
-    logger, _ := zap.NewDevelopment()
-    defer logger.Sync()
+	// Create consumer group
+	group, err := sarama.NewConsumerGroup([]string{"localhost:9092"}, "my-group", config)
+	if err != nil {
+		log.Fatalln("Error creating consumer group:", err)
+	}
+	defer func() {
+		if err := group.Close(); err != nil {
+			log.Fatalln("Error closing consumer group:", err)
+		}
+	}()
 
-    // Create a database connection
-    dsn := "user=postgres dbname=mydb password=mypass host=localhost sslmode=disable"
-    db, err := sqlx.Connect("postgres", dsn)
-    if err != nil {
-        logger.Error("Failed to open database connection", zap.Error(err))
-        return
-    }
-    defer db.Close()
+	// Create a channel to receive messages
+	messages := make(chan *task)
 
-    // Wrap the database connection with the otelsql driver
-    driverName := "otelsql-pq"
-    driver := otelsql.Wrap(sqlx.NewDb(db.DB, driverName))
+	// Define a handler function for processing messages and putting them into the channel
+	handler := customConsumerGroupHandler{messages: messages}
 
-    // Set attributes for all spans
-    attr := semconv.DBSystemPostgreSQL.Value("mydb")
-    otelsql.SetDBAttributes(attr)
+	// Start the consumer group
+	go func() {
+		for {
+			err := group.Consume(context.Background(), []string{"my-topic"}, handler)
+			if err != nil {
+				log.Fatalln("Error consuming messages:", err)
+			}
+		}
+	}()
 
-    // Use the database connection as usual, now using sqlx
-    ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-    defer cancel()
+	// Create a channel to receive termination signal
+	terminate := make(chan os.Signal, 1)
+	signal.Notify(terminate, os.Interrupt)
 
-    var count int
-    if err := driver.QueryRowContext(ctx, "SELECT COUNT(*) FROM mytable").Scan(&count); err != nil {
-        logger.Error("Failed to execute query", zap.Error(err))
-        return
-    }
-    logger.Info("Result", zap.Int("count", count))
+	// Create a channel to signal when all messages have been processed
+	allDone := make(chan bool)
+
+	// Create multiple workers to consume messages from the channel
+	numWorkers := 5
+	var wg sync.WaitGroup
+
+	for i := 0; i < numWorkers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for message := range messages {
+				if err := processMessage(message.message); err != nil {
+					log.Println("Error processing message:", err)
+				} else {
+					message.session.MarkMessage(message.message, "")
+				}
+			}
+		}()
+	}
+
+	// Listen for termination signal
+	go func() {
+		<-terminate
+		log.Println("Termination signal received. Waiting for workers to finish...")
+		// Wait for all messages to be processed
+		wg.Wait()
+		log.Println("All messages processed. Shutting down...")
+		allDone <- true
+	}()
+
+	// Wait for allDone signal
+	<-allDone
+}
+
+func processMessage(message *sarama.ConsumerMessage) error {
+	fmt.Printf("Received message: %s\n", message.Value)
+	// Simulate message processing time
+	time.Sleep(time.Second)
+	return nil
+}
+
+type task struct {
+	session sarama.ConsumerGroupSession
+	message *sarama.ConsumerMessage
+}
+
+type customConsumerGroupHandler struct {
+	messages chan *task
+}
+
+func (customConsumerGroupHandler) Setup(sarama.ConsumerGroupSession) error   { return nil }
+func (customConsumerGroupHandler) Cleanup(sarama.ConsumerGroupSession) error { return nil }
+func (h customConsumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
+	for message := range claim.Messages() {
+		h.messages <- &task{message: message, session: session}
+	}
+	return nil
 }
